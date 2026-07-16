@@ -17,10 +17,14 @@ const MOBILE_BREAKPOINT = 480
 const VSLIDER_DISABLE_ON_MOBILE_QUERY = `(max-width: ${MOBILE_BREAKPOINT - 1
     }px)`
 const MOBILE_VIEWPORT_UI_DELTA_MAX = 140
+const SCROLL_END_MS = 200
 
 let lenis = null
 let viewportReloadBound = false
 let lenisResizeBound = false
+let isUserScrolling = false
+let pendingResizeRefresh = false
+let scrollEndTimer = null
 
 // ----------------------------
 // Lenis
@@ -34,11 +38,38 @@ function initLenis() {
         autoResize: false
     })
 
-    lenis.on('scroll', ScrollTrigger.update)
+    lenis.on('scroll', () => {
+        ScrollTrigger.update()
+        markScrolling()
+    })
     bindLenisResize(lenis)
-    window.addEventListener('load', () => ScrollTrigger.refresh())
+    window.addEventListener('load', () => refreshScrollSystem())
 
     return lenis
+}
+
+function refreshScrollSystem() {
+    if (!lenis) return
+
+    lenis.resize()
+    ScrollTrigger.refresh()
+}
+
+function flushPendingResizeRefresh() {
+    if (!pendingResizeRefresh) return
+
+    pendingResizeRefresh = false
+    refreshScrollSystem()
+}
+
+function markScrolling() {
+    isUserScrolling = true
+    if (scrollEndTimer) clearTimeout(scrollEndTimer)
+
+    scrollEndTimer = setTimeout(() => {
+        isUserScrolling = false
+        flushPendingResizeRefresh()
+    }, SCROLL_END_MS)
 }
 
 function bindLenisResize(instance) {
@@ -61,8 +92,11 @@ function bindLenisResize(instance) {
             heightDelta <= MOBILE_VIEWPORT_UI_DELTA_MAX
 
         if (!isLikelyMobileBrowserUiResize) {
-            instance.resize()
-            ScrollTrigger.refresh()
+            if (isUserScrolling) {
+                pendingResizeRefresh = true
+            } else {
+                refreshScrollSystem()
+            }
         }
 
         previousWidth = width
@@ -73,6 +107,9 @@ function bindLenisResize(instance) {
         if (frame) cancelAnimationFrame(frame)
         frame = requestAnimationFrame(handleResize)
     })
+    window.addEventListener('touchstart', markScrolling, { passive: true })
+    window.addEventListener('touchmove', markScrolling, { passive: true })
+    window.addEventListener('wheel', markScrolling, { passive: true })
 
     lenisResizeBound = true
 }

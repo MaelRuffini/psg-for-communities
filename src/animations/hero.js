@@ -11,6 +11,7 @@ const HERO_LOGO_SELECTOR = '.hero_logo'
 const HERO_PATH_SELECTOR = '.hero_path'
 const HERO_MARQUEE_ITEM_SELECTOR = '.hero_marquee_item'
 const HERO_MOBILE_BREAKPOINT = 480
+const MOBILE_VIEWPORT_UI_DELTA_MAX = 140
 
 const state = {
     scaleInitialized: false,
@@ -266,7 +267,26 @@ function initHeroHeadingAnimation(scope = document) {
     buildHeroHeadingAnimation(trigger, heading, heroLogo)
 
     if (!state.headingResizeBound) {
+        let previousWidth = window.innerWidth
+        let previousHeight = window.innerHeight
         const handleResize = debounce(() => {
+            const width = window.innerWidth
+            const height = window.innerHeight
+            const widthDelta = Math.abs(width - previousWidth)
+            const heightDelta = Math.abs(height - previousHeight)
+            const isMobile = window.matchMedia(
+                `(max-width: ${HERO_MOBILE_BREAKPOINT - 1}px)`
+            ).matches
+            const isLikelyMobileBrowserUiResize =
+                isMobile &&
+                widthDelta === 0 &&
+                heightDelta > 0 &&
+                heightDelta <= MOBILE_VIEWPORT_UI_DELTA_MAX
+
+            previousWidth = width
+            previousHeight = height
+            if (isLikelyMobileBrowserUiResize) return
+
             buildHeroHeadingAnimation(trigger, heading, heroLogo)
             ScrollTrigger.refresh()
         })
