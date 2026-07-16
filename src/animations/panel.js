@@ -1,8 +1,10 @@
 import gsap from 'gsap/dist/gsap'
 import ScrollTrigger from 'gsap/dist/ScrollTrigger'
 
+const MOBILE_BREAKPOINT = 480
 const WRAPPER_SELECTOR = '[data-animate="wrapper"]'
 const CONTENT_SELECTOR = '[data-animate="content"]'
+const PANEL_DISABLE_ON_MOBILE_QUERY = `(max-width: ${MOBILE_BREAKPOINT - 1}px)`
 
 let panelAnimationInitialized = false
 
@@ -29,6 +31,8 @@ function createWrapperAnimation(wrapper) {
 
 export function initPanelAnimation(scope = document) {
     if (panelAnimationInitialized) return
+
+    if (window.matchMedia(PANEL_DISABLE_ON_MOBILE_QUERY).matches) return
 
     const wrappers = scope.querySelectorAll(WRAPPER_SELECTOR)
     if (!wrappers.length) return
