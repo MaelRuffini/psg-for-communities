@@ -183,10 +183,15 @@ function cleanupHeroHeadingAnimation() {
     state.headingSplit = null
 }
 
-function buildHeroHeadingAnimation(trigger, heading, heroLogo) {
+function buildHeroHeadingAnimation(trigger, heading, heroLogo, isMobile = false) {
     if (!hasElements(trigger, heading)) return
 
     cleanupHeroHeadingAnimation()
+
+    if (isMobile) {
+        if (heroLogo) gsap.set(heroLogo, { opacity: 1 })
+        return
+    }
 
     state.headingSplit = new SplitType(heading, {
         types: 'lines',
@@ -264,7 +269,10 @@ function initHeroHeadingAnimation(scope = document) {
     const heroLogo = scope.querySelector(HERO_LOGO_SELECTOR)
     if (!hasElements(trigger, heading)) return
 
-    buildHeroHeadingAnimation(trigger, heading, heroLogo)
+    const isMobile = window.matchMedia(
+        `(max-width: ${HERO_MOBILE_BREAKPOINT - 1}px)`
+    ).matches
+    buildHeroHeadingAnimation(trigger, heading, heroLogo, isMobile)
 
     if (!state.headingResizeBound) {
         let previousWidth = window.innerWidth
@@ -287,7 +295,15 @@ function initHeroHeadingAnimation(scope = document) {
             previousHeight = height
             if (isLikelyMobileBrowserUiResize) return
 
-            buildHeroHeadingAnimation(trigger, heading, heroLogo)
+            const isMobileViewport = window.matchMedia(
+                `(max-width: ${HERO_MOBILE_BREAKPOINT - 1}px)`
+            ).matches
+            buildHeroHeadingAnimation(
+                trigger,
+                heading,
+                heroLogo,
+                isMobileViewport
+            )
             ScrollTrigger.refresh()
         })
 
