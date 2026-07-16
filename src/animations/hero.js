@@ -187,6 +187,7 @@ function buildHeroHeadingAnimation(trigger, heading, heroLogo, isMobile = false)
     if (!hasElements(trigger, heading)) return
 
     cleanupHeroHeadingAnimation()
+    if (heroLogo) gsap.set(heroLogo, { opacity: 1 })
 
     if (isMobile) {
         if (heroLogo) gsap.set(heroLogo, { opacity: 1 })
@@ -234,6 +235,9 @@ function buildHeroHeadingAnimation(trigger, heading, heroLogo, isMobile = false)
         start: 'top+=10 top',
         toggleActions: 'play none none reverse',
         animation: state.headingTween,
+        onLeaveBack: () => {
+            if (heroLogo) gsap.set(heroLogo, { opacity: 1 })
+        },
         invalidateOnRefresh: true
     })
 }
