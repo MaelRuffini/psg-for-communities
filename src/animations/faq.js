@@ -6,6 +6,12 @@ const FAQ_ICON_VERTICAL_LINE_SELECTOR = '.faq_icon_line--vertical'
 
 let faqAnimationInitialized = false
 
+function notifyContentResized() {
+    requestAnimationFrame(() => {
+        window.dispatchEvent(new Event('content:resized'))
+    })
+}
+
 export function initFaqAnimation(scope = document) {
     if (faqAnimationInitialized) return
 
@@ -26,7 +32,8 @@ export function initFaqAnimation(scope = document) {
             gsap.to(toggle, {
                 height: isOpen ? 0 : 'auto',
                 duration: 0.4,
-                ease: 'power3.inOut'
+                ease: 'power3.inOut',
+                onComplete: notifyContentResized
             })
 
             if (verticalLine) {

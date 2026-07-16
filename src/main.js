@@ -107,6 +107,13 @@ function bindLenisResize(instance) {
         if (frame) cancelAnimationFrame(frame)
         frame = requestAnimationFrame(handleResize)
     })
+    window.addEventListener('content:resized', () => {
+        if (isUserScrolling) {
+            pendingResizeRefresh = true
+        } else {
+            refreshScrollSystem()
+        }
+    })
     window.addEventListener('touchstart', markScrolling, { passive: true })
     window.addEventListener('touchmove', markScrolling, { passive: true })
     window.addEventListener('wheel', markScrolling, { passive: true })
