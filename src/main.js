@@ -16,9 +16,11 @@ gsap.registerPlugin(ScrollTrigger, MorphSVGPlugin)
 const MOBILE_BREAKPOINT = 480
 const VSLIDER_DISABLE_ON_MOBILE_QUERY = `(max-width: ${MOBILE_BREAKPOINT - 1
     }px)`
+const MOBILE_VIEWPORT_UI_DELTA_MAX = 140
 
 let lenis = null
 let viewportReloadBound = false
+let lenisResizeBound = false
 
 // ----------------------------
 // Lenis
@@ -28,13 +30,51 @@ function initLenis() {
     if (lenis) return lenis
 
     lenis = new Lenis({
-        autoRaf: true
+        autoRaf: true,
+        autoResize: false
     })
 
     lenis.on('scroll', ScrollTrigger.update)
+    bindLenisResize(lenis)
     window.addEventListener('load', () => ScrollTrigger.refresh())
 
     return lenis
+}
+
+function bindLenisResize(instance) {
+    if (lenisResizeBound || !instance) return
+
+    let frame = null
+    let previousWidth = window.innerWidth
+    let previousHeight = window.innerHeight
+
+    const handleResize = () => {
+        const width = window.innerWidth
+        const height = window.innerHeight
+        const widthDelta = Math.abs(width - previousWidth)
+        const heightDelta = Math.abs(height - previousHeight)
+        const isMobile = window.matchMedia(VSLIDER_DISABLE_ON_MOBILE_QUERY).matches
+        const isLikelyMobileBrowserUiResize =
+            isMobile &&
+            widthDelta === 0 &&
+            heightDelta > 0 &&
+            heightDelta <= MOBILE_VIEWPORT_UI_DELTA_MAX
+
+        if (!isLikelyMobileBrowserUiResize) {
+            instance.resize()
+            ScrollTrigger.refresh()
+        }
+
+        previousWidth = width
+        previousHeight = height
+    }
+
+    window.addEventListener('resize', () => {
+        if (frame) cancelAnimationFrame(frame)
+        frame = requestAnimationFrame(handleResize)
+    })
+
+    lenisResizeBound = true
 }
 
 function initViewportBreakpointReload() {
