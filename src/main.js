@@ -147,5 +147,5 @@ document.addEventListener('DOMContentLoaded', () => {
     initFooterAnimation()
     initNumbersAnimation()
     initVisualItemsAnimation()
-    initVSlider()
+    // initVSlider()
 })
