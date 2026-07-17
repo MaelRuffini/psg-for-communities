@@ -138,9 +138,74 @@ function initViewportBreakpointReload() {
     viewportReloadBound = true
 }
 
+function initModalControls() {
+    const modalButtons = document.querySelectorAll('.button_modal')
+    const modal = document.querySelector('.modal_wrap')
+    const closeButtons = document.querySelectorAll('.modal_close_button')
+
+    if (!modalButtons.length || !modal || !closeButtons.length) return
+
+    const FADE_DURATION_MS = 250
+    let hideTimer = null
+
+    modal.style.transition = `opacity ${FADE_DURATION_MS}ms ease`
+    modal.style.willChange = 'opacity'
+
+    const isInitiallyVisible = window.getComputedStyle(modal).display !== 'none'
+    if (isInitiallyVisible) {
+        modal.style.opacity = '1'
+        modal.style.visibility = 'visible'
+        modal.style.pointerEvents = 'auto'
+    } else {
+        modal.style.opacity = '0'
+        modal.style.visibility = 'hidden'
+        modal.style.pointerEvents = 'none'
+    }
+
+    const openModal = () => {
+        if (hideTimer) {
+            clearTimeout(hideTimer)
+            hideTimer = null
+        }
+
+        modal.style.display = 'flex'
+        requestAnimationFrame(() => {
+            modal.style.opacity = '1'
+            modal.style.visibility = 'visible'
+            modal.style.pointerEvents = 'auto'
+        })
+    }
+
+    const closeModal = () => {
+        modal.style.opacity = '0'
+        modal.style.visibility = 'hidden'
+        modal.style.pointerEvents = 'none'
+
+        hideTimer = setTimeout(() => {
+            modal.style.display = 'none'
+            hideTimer = null
+        }, FADE_DURATION_MS)
+    }
+
+    modalButtons.forEach((button) => {
+        button.addEventListener('click', (event) => {
+            event.preventDefault()
+            openModal()
+        })
+    })
+
+    closeButtons.forEach((closeButton) => {
+        closeButton.addEventListener('click', (event) => {
+            event.preventDefault()
+            closeModal()
+        })
+    })
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initViewportBreakpointReload()
     initLenis()
+    initModalControls()
     initPanelAnimation()
     initHeroAnimations()
     initFaqAnimation()
