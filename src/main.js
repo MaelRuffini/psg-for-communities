@@ -10,6 +10,7 @@ import { initNumbersAnimation } from './animations/numbers'
 import { initPanelAnimation } from './animations/panel'
 import { initVisualItemsAnimation } from './animations/visual-items'
 import { initVSlider } from './animations/vslider'
+import { initKpisAnimation } from './animations/kpis'
 
 gsap.registerPlugin(ScrollTrigger, MorphSVGPlugin)
 
@@ -222,4 +223,5 @@ document.addEventListener('DOMContentLoaded', () => {
     initNumbersAnimation()
     initVisualItemsAnimation()
     initVSlider()
+    initKpisAnimation()
 })
