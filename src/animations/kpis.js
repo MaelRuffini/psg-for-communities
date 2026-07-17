@@ -6,7 +6,6 @@ const KPIS_TRACK_SELECTOR = '.kpis_cl'
 const KPIS_ITEM_SELECTOR = '.kpis_cl_item'
 const KPI_IMAGE_SELECTOR = '.kpis_cl_image'
 const KPI_MAX_YAW_DEG = 18
-const KPI_MOBILE_MAX_YAW_DEG = 10
 const KPI_MIN_SCALE = 0.76
 const KPI_MAX_SCALE = 1
 const KPI_CENTER_DEADZONE = 0.03
@@ -16,8 +15,6 @@ const KPI_PROGRESS_DRAG_DISTANCE_FACTOR = 1.6
 const KPI_INERTIA_LOOKAHEAD_MS = 380
 const KPI_INERTIA_MIN_DURATION = 0.45
 const KPI_INERTIA_MAX_DURATION = 1.1
-const KPI_MOBILE_BREAKPOINT = 768
-const MOBILE_VIEWPORT_UI_DELTA_MAX = 140
 
 let kpisAnimationInitialized = false
 gsap.registerPlugin(Draggable)
@@ -52,14 +49,12 @@ export function initKpisAnimation(scope = document) {
         transformOrigin: '50% 50%',
         transformStyle: 'preserve-3d',
         force3D: true,
-        backfaceVisibility: 'hidden',
         willChange: 'transform'
     })
 
     gsap.set(images.filter(Boolean), {
         xPercent: 0,
         force3D: true,
-        backfaceVisibility: 'hidden',
         willChange: 'transform'
     })
 
@@ -80,12 +75,9 @@ export function initKpisAnimation(scope = document) {
     )
 
     let progress = 0
-    let throwTween = null
     let minProgress = 0
     let maxProgress = 1
-    let previousWidth = window.innerWidth
-    let previousHeight = window.innerHeight
-    let resizeFrame = null
+    let throwTween = null
 
     const getProgressPerPixel = () => {
         const dragDistance = Math.max(
@@ -95,22 +87,69 @@ export function initKpisAnimation(scope = document) {
         return 1 / dragDistance
     }
 
-    const getXPercentFromProgress = (value) =>
-        gsap.utils.interpolate(100, -100 * items.length, value)
+    const setTrackPositionByProgress = (value) => {
+        const xPercent = gsap.utils.interpolate(100, -100 * items.length, value)
+        gsap.set(items, { xPercent })
+    }
+
+    const computeProgressBounds = () => {
+        const firstItem = items[0]
+        const lastItem = items[items.length - 1]
+        if (!firstItem || !lastItem) {
+            minProgress = 0
+            maxProgress = 1
+            return
+        }
+
+        const viewportCenterX = window.innerWidth / 2
+        const previousProgress = progress
+
+        const getItemCenterAtProgress = (sampleProgress, item) => {
+            setTrackPositionByProgress(sampleProgress)
+            const rect = item.getBoundingClientRect()
+            return rect.left + rect.width / 2
+        }
+
+        const firstAtStart = getItemCenterAtProgress(0, firstItem)
+        const firstAtEnd = getItemCenterAtProgress(1, firstItem)
+        const lastAtStart = getItemCenterAtProgress(0, lastItem)
+        const lastAtEnd = getItemCenterAtProgress(1, lastItem)
+
+        const solveProgressForCenter = (startCenter, endCenter) => {
+            const delta = endCenter - startCenter
+            if (Math.abs(delta) < 0.0001) return 0
+            return (viewportCenterX - startCenter) / delta
+        }
+
+        const firstCenteredProgress = solveProgressForCenter(firstAtStart, firstAtEnd)
+        const lastCenteredProgress = solveProgressForCenter(lastAtStart, lastAtEnd)
+
+        minProgress = gsap.utils.clamp(
+            0,
+            1,
+            Math.min(firstCenteredProgress, lastCenteredProgress)
+        )
+        maxProgress = gsap.utils.clamp(
+            0,
+            1,
+            Math.max(firstCenteredProgress, lastCenteredProgress)
+        )
+
+        if (maxProgress - minProgress < 0.001) {
+            minProgress = 0
+            maxProgress = 1
+        }
+
+        progress = gsap.utils.clamp(minProgress, maxProgress, previousProgress)
+    }
 
     const applyProgress = () => {
-        const isMobileViewport = window.matchMedia(
-            `(max-width: ${KPI_MOBILE_BREAKPOINT - 1}px)`
-        ).matches
-        const maxYaw = isMobileViewport ? KPI_MOBILE_MAX_YAW_DEG : KPI_MAX_YAW_DEG
         const viewportCenterX = window.innerWidth / 2
         const maxDistance = Math.max(
             viewportCenterX * KPI_VIEWPORT_DISTANCE_MULTIPLIER,
             1
         )
-        const xPercent = getXPercentFromProgress(progress)
-
-        gsap.set(items, { xPercent })
+        setTrackPositionByProgress(progress)
 
         items.forEach((item, index) => {
             const rect = item.getBoundingClientRect()
@@ -123,59 +162,12 @@ export function initKpisAnimation(scope = document) {
                 ? 1
                 : gsap.utils.interpolate(KPI_MIN_SCALE, KPI_MAX_SCALE, centeredFactor)
 
-            yawSetters[index](clampedOffset * maxYaw)
+            yawSetters[index](clampedOffset * KPI_MAX_YAW_DEG)
             gsap.set(item, { scale: targetScale })
             imageParallaxSetters[index]?.(
                 -clampedOffset * KPI_IMAGE_PARALLAX_MAX_PERCENT
             )
         })
-    }
-
-    const calculateCenteredProgressForItem = (itemIndex, currentProgress = progress) => {
-        const viewportCenterX = window.innerWidth / 2
-        const item = items[itemIndex]
-        if (!item) return null
-
-        const rectAtCurrent = item.getBoundingClientRect()
-        const centerAtCurrent = rectAtCurrent.left + rectAtCurrent.width / 2
-        const xPercentAtCurrent = getXPercentFromProgress(currentProgress)
-        const pixelsPerXPercent = rectAtCurrent.width / 100
-        if (Math.abs(pixelsPerXPercent) < 0.001) return null
-
-        const deltaXPercentNeeded =
-            (viewportCenterX - centerAtCurrent) / pixelsPerXPercent
-        const xPercentCentered = xPercentAtCurrent + deltaXPercentNeeded
-        const interpolationDenominator = -100 * (items.length + 1)
-        if (Math.abs(interpolationDenominator) < 0.001) return null
-
-        // Inverse of getXPercentFromProgress(): x = 100 + (-100*(n+1))*progress
-        return (xPercentCentered - 100) / interpolationDenominator
-    }
-
-    const recalculateProgressBounds = () => {
-        const previousProgress = progress
-        const firstItemCenteredProgress = calculateCenteredProgressForItem(
-            0,
-            previousProgress
-        )
-        const lastItemCenteredProgress = calculateCenteredProgressForItem(
-            items.length - 1,
-            previousProgress
-        )
-
-        const hasValidBounds =
-            Number.isFinite(firstItemCenteredProgress) &&
-            Number.isFinite(lastItemCenteredProgress)
-
-        if (hasValidBounds) {
-            minProgress = Math.min(firstItemCenteredProgress, lastItemCenteredProgress)
-            maxProgress = Math.max(firstItemCenteredProgress, lastItemCenteredProgress)
-        } else {
-            minProgress = 0
-            maxProgress = 1
-        }
-
-        progress = gsap.utils.clamp(minProgress, maxProgress, previousProgress)
     }
 
     let dragStartProgress = 0
@@ -249,33 +241,13 @@ export function initKpisAnimation(scope = document) {
     })
 
     const handleResize = () => {
-        const width = window.innerWidth
-        const height = window.innerHeight
-        const widthDelta = Math.abs(width - previousWidth)
-        const heightDelta = Math.abs(height - previousHeight)
-        const isMobileViewport = window.matchMedia(
-            `(max-width: ${KPI_MOBILE_BREAKPOINT - 1}px)`
-        ).matches
-        const isLikelyMobileBrowserUiResize =
-            isMobileViewport &&
-            widthDelta === 0 &&
-            heightDelta > 0 &&
-            heightDelta <= MOBILE_VIEWPORT_UI_DELTA_MAX
-
-        previousWidth = width
-        previousHeight = height
-        if (isLikelyMobileBrowserUiResize) return
-
-        recalculateProgressBounds()
+        computeProgressBounds()
         applyProgress()
     }
+    window.addEventListener('resize', handleResize)
 
-    window.addEventListener('resize', () => {
-        if (resizeFrame) cancelAnimationFrame(resizeFrame)
-        resizeFrame = requestAnimationFrame(handleResize)
-    })
-
-    recalculateProgressBounds()
+    computeProgressBounds()
+    progress = minProgress
     applyProgress()
     requestAnimationFrame(applyProgress)
 
