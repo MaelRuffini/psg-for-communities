@@ -49,12 +49,14 @@ export function initKpisAnimation(scope = document) {
         transformOrigin: '50% 50%',
         transformStyle: 'preserve-3d',
         force3D: true,
+        backfaceVisibility: 'hidden',
         willChange: 'transform'
     })
 
     gsap.set(images.filter(Boolean), {
         xPercent: 0,
         force3D: true,
+        backfaceVisibility: 'hidden',
         willChange: 'transform'
     })
 
@@ -119,30 +121,35 @@ export function initKpisAnimation(scope = document) {
         })
     }
 
-    const calculateCenteredProgressForItem = (itemIndex) => {
+    const calculateCenteredProgressForItem = (itemIndex, currentProgress = progress) => {
         const viewportCenterX = window.innerWidth / 2
         const item = items[itemIndex]
         if (!item) return null
 
-        gsap.set(items, { xPercent: getXPercentFromProgress(0) })
-        const rectAtStart = item.getBoundingClientRect()
-        const centerAtStart = rectAtStart.left + rectAtStart.width / 2
+        const rectAtCurrent = item.getBoundingClientRect()
+        const centerAtCurrent = rectAtCurrent.left + rectAtCurrent.width / 2
+        const xPercentRange =
+            getXPercentFromProgress(1) - getXPercentFromProgress(0)
+        const travelAcrossFullProgress = (xPercentRange / 100) * rectAtCurrent.width
+        if (Math.abs(travelAcrossFullProgress) < 0.001) return null
 
-        gsap.set(items, { xPercent: getXPercentFromProgress(1) })
-        const rectAtEnd = item.getBoundingClientRect()
-        const centerAtEnd = rectAtEnd.left + rectAtEnd.width / 2
+        const centerAtProgressZero =
+            centerAtCurrent - travelAcrossFullProgress * currentProgress
 
-        const travel = centerAtEnd - centerAtStart
-        if (Math.abs(travel) < 0.001) return null
-
-        return (viewportCenterX - centerAtStart) / travel
+        return (
+            (viewportCenterX - centerAtProgressZero) / travelAcrossFullProgress
+        )
     }
 
     const recalculateProgressBounds = () => {
         const previousProgress = progress
-        const firstItemCenteredProgress = calculateCenteredProgressForItem(0)
+        const firstItemCenteredProgress = calculateCenteredProgressForItem(
+            0,
+            previousProgress
+        )
         const lastItemCenteredProgress = calculateCenteredProgressForItem(
-            items.length - 1
+            items.length - 1,
+            previousProgress
         )
 
         const hasValidBounds =
