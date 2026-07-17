@@ -6,6 +6,7 @@ const KPIS_TRACK_SELECTOR = '.kpis_cl'
 const KPIS_ITEM_SELECTOR = '.kpis_cl_item'
 const KPI_IMAGE_SELECTOR = '.kpis_cl_image'
 const KPI_MAX_YAW_DEG = 18
+const KPI_MOBILE_MAX_YAW_DEG = 10
 const KPI_MIN_SCALE = 0.76
 const KPI_MAX_SCALE = 1
 const KPI_CENTER_DEADZONE = 0.03
@@ -15,6 +16,8 @@ const KPI_PROGRESS_DRAG_DISTANCE_FACTOR = 1.6
 const KPI_INERTIA_LOOKAHEAD_MS = 380
 const KPI_INERTIA_MIN_DURATION = 0.45
 const KPI_INERTIA_MAX_DURATION = 1.1
+const KPI_MOBILE_BREAKPOINT = 768
+const MOBILE_VIEWPORT_UI_DELTA_MAX = 140
 
 let kpisAnimationInitialized = false
 gsap.registerPlugin(Draggable)
@@ -80,6 +83,9 @@ export function initKpisAnimation(scope = document) {
     let throwTween = null
     let minProgress = 0
     let maxProgress = 1
+    let previousWidth = window.innerWidth
+    let previousHeight = window.innerHeight
+    let resizeFrame = null
 
     const getProgressPerPixel = () => {
         const dragDistance = Math.max(
@@ -93,6 +99,10 @@ export function initKpisAnimation(scope = document) {
         gsap.utils.interpolate(100, -100 * items.length, value)
 
     const applyProgress = () => {
+        const isMobileViewport = window.matchMedia(
+            `(max-width: ${KPI_MOBILE_BREAKPOINT - 1}px)`
+        ).matches
+        const maxYaw = isMobileViewport ? KPI_MOBILE_MAX_YAW_DEG : KPI_MAX_YAW_DEG
         const viewportCenterX = window.innerWidth / 2
         const maxDistance = Math.max(
             viewportCenterX * KPI_VIEWPORT_DISTANCE_MULTIPLIER,
@@ -113,7 +123,7 @@ export function initKpisAnimation(scope = document) {
                 ? 1
                 : gsap.utils.interpolate(KPI_MIN_SCALE, KPI_MAX_SCALE, centeredFactor)
 
-            yawSetters[index](clampedOffset * KPI_MAX_YAW_DEG)
+            yawSetters[index](clampedOffset * maxYaw)
             gsap.set(item, { scale: targetScale })
             imageParallaxSetters[index]?.(
                 -clampedOffset * KPI_IMAGE_PARALLAX_MAX_PERCENT
@@ -245,9 +255,31 @@ export function initKpisAnimation(scope = document) {
         }
     })
 
-    window.addEventListener('resize', () => {
+    const handleResize = () => {
+        const width = window.innerWidth
+        const height = window.innerHeight
+        const widthDelta = Math.abs(width - previousWidth)
+        const heightDelta = Math.abs(height - previousHeight)
+        const isMobileViewport = window.matchMedia(
+            `(max-width: ${KPI_MOBILE_BREAKPOINT - 1}px)`
+        ).matches
+        const isLikelyMobileBrowserUiResize =
+            isMobileViewport &&
+            widthDelta === 0 &&
+            heightDelta > 0 &&
+            heightDelta <= MOBILE_VIEWPORT_UI_DELTA_MAX
+
+        previousWidth = width
+        previousHeight = height
+        if (isLikelyMobileBrowserUiResize) return
+
         recalculateProgressBounds()
         applyProgress()
+    }
+
+    window.addEventListener('resize', () => {
+        if (resizeFrame) cancelAnimationFrame(resizeFrame)
+        resizeFrame = requestAnimationFrame(handleResize)
     })
 
     recalculateProgressBounds()
