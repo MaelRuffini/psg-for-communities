@@ -142,8 +142,10 @@ function initModalControls() {
     const modalButtons = document.querySelectorAll('.button_modal')
     const modal = document.querySelector('.modal_wrap')
     const closeButtons = document.querySelectorAll('.modal_close_button')
+    const modalBackgrounds = document.querySelectorAll('.modal_background')
 
-    if (!modalButtons.length || !modal || !closeButtons.length) return
+    if (!modalButtons.length || !modal) return
+    if (!closeButtons.length && !modalBackgrounds.length) return
 
     const FADE_DURATION_MS = 250
     let hideTimer = null
@@ -196,6 +198,13 @@ function initModalControls() {
 
     closeButtons.forEach((closeButton) => {
         closeButton.addEventListener('click', (event) => {
+            event.preventDefault()
+            closeModal()
+        })
+    })
+
+    modalBackgrounds.forEach((background) => {
+        background.addEventListener('click', (event) => {
             event.preventDefault()
             closeModal()
         })
