@@ -138,17 +138,18 @@ export function initKpisAnimation(scope = document) {
 
         const rectAtCurrent = item.getBoundingClientRect()
         const centerAtCurrent = rectAtCurrent.left + rectAtCurrent.width / 2
-        const xPercentRange =
-            getXPercentFromProgress(1) - getXPercentFromProgress(0)
-        const travelAcrossFullProgress = (xPercentRange / 100) * rectAtCurrent.width
-        if (Math.abs(travelAcrossFullProgress) < 0.001) return null
+        const xPercentAtCurrent = getXPercentFromProgress(currentProgress)
+        const pixelsPerXPercent = rectAtCurrent.width / 100
+        if (Math.abs(pixelsPerXPercent) < 0.001) return null
 
-        const centerAtProgressZero =
-            centerAtCurrent - travelAcrossFullProgress * currentProgress
+        const deltaXPercentNeeded =
+            (viewportCenterX - centerAtCurrent) / pixelsPerXPercent
+        const xPercentCentered = xPercentAtCurrent + deltaXPercentNeeded
+        const interpolationDenominator = -100 * (items.length + 1)
+        if (Math.abs(interpolationDenominator) < 0.001) return null
 
-        return (
-            (viewportCenterX - centerAtProgressZero) / travelAcrossFullProgress
-        )
+        // Inverse of getXPercentFromProgress(): x = 100 + (-100*(n+1))*progress
+        return (xPercentCentered - 100) / interpolationDenominator
     }
 
     const recalculateProgressBounds = () => {
@@ -167,16 +168,8 @@ export function initKpisAnimation(scope = document) {
             Number.isFinite(lastItemCenteredProgress)
 
         if (hasValidBounds) {
-            minProgress = gsap.utils.clamp(
-                0,
-                1,
-                Math.min(firstItemCenteredProgress, lastItemCenteredProgress)
-            )
-            maxProgress = gsap.utils.clamp(
-                0,
-                1,
-                Math.max(firstItemCenteredProgress, lastItemCenteredProgress)
-            )
+            minProgress = Math.min(firstItemCenteredProgress, lastItemCenteredProgress)
+            maxProgress = Math.max(firstItemCenteredProgress, lastItemCenteredProgress)
         } else {
             minProgress = 0
             maxProgress = 1
