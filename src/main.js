@@ -8,6 +8,7 @@ import { initFaqAnimation } from './animations/faq'
 import { initFooterAnimation } from './animations/footer'
 import { initNumbersAnimation } from './animations/numbers'
 import { initPanelAnimation } from './animations/panel'
+import { initImagesAnimation } from './animations/images'
 import { initVisualItemsAnimation } from './animations/visual-items'
 import { initVSlider } from './animations/vslider'
 import { initKpisAnimation } from './animations/kpis'
@@ -217,6 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initLenis()
     initModalControls()
     initPanelAnimation()
+    initImagesAnimation()
     initHeroAnimations()
     initFaqAnimation()
     initFooterAnimation()
