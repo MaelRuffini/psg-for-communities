@@ -12,9 +12,11 @@ const KPI_CENTER_DEADZONE = 0.03
 const KPI_IMAGE_PARALLAX_MAX_PERCENT = 8
 const KPI_VIEWPORT_DISTANCE_MULTIPLIER = 1.7
 const KPI_PROGRESS_DRAG_DISTANCE_FACTOR = 2.8
-const KPI_INERTIA_LOOKAHEAD_MS = 380
-const KPI_INERTIA_MIN_DURATION = 0.45
-const KPI_INERTIA_MAX_DURATION = 1.1
+const KPI_INERTIA_LOOKAHEAD_MS = 160
+const KPI_INERTIA_MIN_DURATION = 0.12
+const KPI_INERTIA_MAX_DURATION = 0.28
+const KPI_SNAP_MIN_DURATION = 0.35
+const KPI_SNAP_MAX_DURATION = 0.55
 const KPI_LOOP_COPIES = 3
 
 let kpisDragAnimationInitialized = false
@@ -88,6 +90,7 @@ export function initKpisDragAnimation(scope = document) {
     let loopSpan = originalCount / (items.length + 1)
     let loopStart = loopSpan
     let loopEnd = loopSpan * 2
+    let fullTravelPx = -1
     let throwTween = null
     let dragStartProgress = 0
     let dragStartX = 0
@@ -113,6 +116,13 @@ export function initKpisDragAnimation(scope = document) {
         gsap.set(items, { xPercent })
     }
 
+    const wrapToLoop = (value) => {
+        let next = value
+        while (next >= loopEnd) next -= loopSpan
+        while (next < loopStart) next += loopSpan
+        return next
+    }
+
     const measureLoop = () => {
         setTrackPositionByProgress(0)
         const firstCenterAtStart = getItemCenterX(items[0])
@@ -121,13 +131,13 @@ export function initKpisDragAnimation(scope = document) {
         setTrackPositionByProgress(1)
         const firstCenterAtEnd = getItemCenterX(items[0])
 
-        const fullTravel = firstCenterAtEnd - firstCenterAtStart
+        fullTravelPx = firstCenterAtEnd - firstCenterAtStart
         const oneSetTravel = cloneCenterAtStart - firstCenterAtStart
 
         loopSpan =
-            Math.abs(fullTravel) < 0.001
+            Math.abs(fullTravelPx) < 0.001
                 ? originalCount / (items.length + 1)
-                : Math.abs(oneSetTravel / fullTravel)
+                : Math.abs(oneSetTravel / fullTravelPx)
 
         // Keep the playhead inside the middle copy so there is always
         // a previous set on the left and a next set on the right.
@@ -159,6 +169,91 @@ export function initKpisDragAnimation(scope = document) {
         if (syncDragStart && shift !== 0) {
             dragStartProgress += shift * loopSpan
         }
+    }
+
+    const getSnapProgress = () => {
+        if (Math.abs(fullTravelPx) < 0.001) return progress
+
+        const viewportCenterX = window.innerWidth / 2
+        let closestOffset = 0
+        let closestDist = Infinity
+
+        items.forEach((item) => {
+            const offset = getItemCenterX(item) - viewportCenterX
+            const dist = Math.abs(offset)
+            if (dist < closestDist) {
+                closestDist = dist
+                closestOffset = offset
+            }
+        })
+
+        const rawTarget = progress - closestOffset / fullTravelPx
+        const wrappedTarget = wrapToLoop(rawTarget)
+        const candidates = [
+            wrappedTarget,
+            wrappedTarget - loopSpan,
+            wrappedTarget + loopSpan
+        ]
+
+        let bestTarget = wrappedTarget
+        let bestDist = Math.abs(wrappedTarget - progress)
+        candidates.forEach((candidate) => {
+            const dist = Math.abs(candidate - progress)
+            if (dist < bestDist) {
+                bestDist = dist
+                bestTarget = candidate
+            }
+        })
+
+        return bestTarget
+    }
+
+    const animateProgressTo = (target, duration, ease, onComplete) => {
+        throwTween?.kill()
+        const delta = Math.abs(target - progress)
+        if (delta < 0.0008) {
+            progress = wrapToLoop(target)
+            applyProgress()
+            onComplete?.()
+            return
+        }
+
+        throwTween = gsap.to(
+            { value: progress },
+            {
+                value: target,
+                duration,
+                ease,
+                onUpdate: function onUpdate() {
+                    progress = this.targets()[0].value
+                    normalizeProgress()
+                    this.targets()[0].value = progress
+                    applyProgress()
+                },
+                onComplete: () => {
+                    normalizeProgress()
+                    applyProgress()
+                    onComplete?.()
+                }
+            }
+        )
+    }
+
+    const snapToClosestItem = () => {
+        const snapTarget = getSnapProgress()
+        const delta = Math.abs(snapTarget - progress)
+        if (delta < 0.0008) {
+            normalizeProgress()
+            applyProgress()
+            return
+        }
+
+        const duration = gsap.utils.clamp(
+            KPI_SNAP_MIN_DURATION,
+            KPI_SNAP_MAX_DURATION,
+            delta * 3.2
+        )
+        animateProgressTo(snapTarget, duration, 'power3.out')
     }
 
     const applyProgress = () => {
@@ -210,37 +305,24 @@ export function initKpisDragAnimation(scope = document) {
                 dragVelocityPxPerMs *
                 KPI_INERTIA_LOOKAHEAD_MS *
                 getProgressPerPixel()
-            const delta = Math.abs(projectedProgress - progress)
-            if (delta < 0.0015) {
-                normalizeProgress()
-                applyProgress()
+            const inertiaDelta = Math.abs(projectedProgress - progress)
+
+            if (inertiaDelta < 0.001) {
+                snapToClosestItem()
                 return
             }
 
-            const duration = gsap.utils.clamp(
+            const inertiaDuration = gsap.utils.clamp(
                 KPI_INERTIA_MIN_DURATION,
                 KPI_INERTIA_MAX_DURATION,
-                delta * 2.8
+                inertiaDelta * 1.6
             )
 
-            throwTween = gsap.to(
-                { value: progress },
-                {
-                    value: projectedProgress,
-                    duration,
-                    ease: 'power3.out',
-                    onUpdate: function onUpdate() {
-                        progress = this.targets()[0].value
-                        normalizeProgress()
-                        // Keep tween value in sync after seamless loop shifts
-                        this.targets()[0].value = progress
-                        applyProgress()
-                    },
-                    onComplete: () => {
-                        normalizeProgress()
-                        applyProgress()
-                    }
-                }
+            animateProgressTo(
+                projectedProgress,
+                inertiaDuration,
+                'power2.out',
+                snapToClosestItem
             )
         },
         onDrag() {
