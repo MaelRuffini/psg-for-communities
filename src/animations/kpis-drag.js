@@ -12,9 +12,11 @@ const KPI_CENTER_DEADZONE = 0.03
 const KPI_IMAGE_PARALLAX_MAX_PERCENT = 8
 const KPI_VIEWPORT_DISTANCE_MULTIPLIER = 1.7
 const KPI_PROGRESS_DRAG_DISTANCE_FACTOR = 2.8
-const KPI_INERTIA_LOOKAHEAD_MS = 220
-const KPI_SNAP_MIN_DURATION = 0.55
-const KPI_SNAP_MAX_DURATION = 0.95
+const KPI_INERTIA_LOOKAHEAD_MS = 160
+const KPI_INERTIA_MIN_DURATION = 0.12
+const KPI_INERTIA_MAX_DURATION = 0.28
+const KPI_SNAP_MIN_DURATION = 0.35
+const KPI_SNAP_MAX_DURATION = 0.55
 const KPI_LOOP_COPIES = 3
 
 let kpisDragAnimationInitialized = false
@@ -70,23 +72,16 @@ export function initKpisDragAnimation(scope = document) {
 
     const yawSetters = items.map((item) =>
         gsap.quickTo(item, 'rotationY', {
-            duration: 0.4,
-            ease: 'power3.out'
-        })
-    )
-
-    const scaleSetters = items.map((item) =>
-        gsap.quickTo(item, 'scale', {
-            duration: 0.4,
-            ease: 'power3.out'
+            duration: 0.22,
+            ease: 'power2.out'
         })
     )
 
     const imageParallaxSetters = images.map((image) =>
         image
             ? gsap.quickTo(image, 'xPercent', {
-                duration: 0.35,
-                ease: 'power3.out'
+                duration: 0.2,
+                ease: 'power2.out'
             })
             : null
     )
@@ -213,23 +208,13 @@ export function initKpisDragAnimation(scope = document) {
         return bestTarget
     }
 
-    const getSnapProgressFrom = (sampleProgress) => {
-        const previousProgress = progress
-        progress = sampleProgress
-        normalizeProgress()
-        setTrackPositionByProgress(progress)
-        const target = getSnapProgress()
-        progress = previousProgress
-        setTrackPositionByProgress(progress)
-        return target
-    }
-
-    const animateProgressTo = (target, duration, ease) => {
+    const animateProgressTo = (target, duration, ease, onComplete) => {
         throwTween?.kill()
         const delta = Math.abs(target - progress)
         if (delta < 0.0008) {
             progress = wrapToLoop(target)
             applyProgress()
+            onComplete?.()
             return
         }
 
@@ -248,19 +233,14 @@ export function initKpisDragAnimation(scope = document) {
                 onComplete: () => {
                     normalizeProgress()
                     applyProgress()
+                    onComplete?.()
                 }
             }
         )
     }
 
-    const releaseToSnap = () => {
-        const projectedProgress =
-            progress -
-            dragVelocityPxPerMs *
-            KPI_INERTIA_LOOKAHEAD_MS *
-            getProgressPerPixel()
-
-        const snapTarget = getSnapProgressFrom(projectedProgress)
+    const snapToClosestItem = () => {
+        const snapTarget = getSnapProgress()
         const delta = Math.abs(snapTarget - progress)
         if (delta < 0.0008) {
             normalizeProgress()
@@ -268,14 +248,12 @@ export function initKpisDragAnimation(scope = document) {
             return
         }
 
-        const velocityBoost = Math.min(Math.abs(dragVelocityPxPerMs) * 0.25, 0.2)
         const duration = gsap.utils.clamp(
             KPI_SNAP_MIN_DURATION,
             KPI_SNAP_MAX_DURATION,
-            delta * 4.5 + velocityBoost
+            delta * 3.2
         )
-
-        animateProgressTo(snapTarget, duration, 'expo.out')
+        animateProgressTo(snapTarget, duration, 'power3.out')
     }
 
     const applyProgress = () => {
@@ -297,7 +275,7 @@ export function initKpisDragAnimation(scope = document) {
                 : gsap.utils.interpolate(KPI_MIN_SCALE, KPI_MAX_SCALE, centeredFactor)
 
             yawSetters[index](clampedOffset * KPI_MAX_YAW_DEG)
-            scaleSetters[index](targetScale)
+            gsap.set(item, { scale: targetScale })
             imageParallaxSetters[index]?.(
                 -clampedOffset * KPI_IMAGE_PARALLAX_MAX_PERCENT
             )
@@ -321,7 +299,31 @@ export function initKpisDragAnimation(scope = document) {
         },
         onRelease() {
             gsap.set(wrap, { cursor: 'grab' })
-            releaseToSnap()
+
+            const projectedProgress =
+                progress -
+                dragVelocityPxPerMs *
+                KPI_INERTIA_LOOKAHEAD_MS *
+                getProgressPerPixel()
+            const inertiaDelta = Math.abs(projectedProgress - progress)
+
+            if (inertiaDelta < 0.001) {
+                snapToClosestItem()
+                return
+            }
+
+            const inertiaDuration = gsap.utils.clamp(
+                KPI_INERTIA_MIN_DURATION,
+                KPI_INERTIA_MAX_DURATION,
+                inertiaDelta * 1.6
+            )
+
+            animateProgressTo(
+                projectedProgress,
+                inertiaDuration,
+                'power2.out',
+                snapToClosestItem
+            )
         },
         onDrag() {
             const now = performance.now()
