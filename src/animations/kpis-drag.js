@@ -11,10 +11,11 @@ const KPI_MAX_SCALE = 1
 const KPI_CENTER_DEADZONE = 0.03
 const KPI_IMAGE_PARALLAX_MAX_PERCENT = 8
 const KPI_VIEWPORT_DISTANCE_MULTIPLIER = 1.7
-const KPI_PROGRESS_DRAG_DISTANCE_FACTOR = 1.6
+const KPI_PROGRESS_DRAG_DISTANCE_FACTOR = 2.8
 const KPI_INERTIA_LOOKAHEAD_MS = 380
 const KPI_INERTIA_MIN_DURATION = 0.45
 const KPI_INERTIA_MAX_DURATION = 1.1
+const KPI_LOOP_COPIES = 3
 
 let kpisDragAnimationInitialized = false
 gsap.registerPlugin(Draggable)
@@ -28,10 +29,19 @@ export function initKpisDragAnimation(scope = document) {
     const track = wrap.querySelector(KPIS_TRACK_SELECTOR)
     if (!track) return
 
-    const items = track.querySelectorAll(KPIS_ITEM_SELECTOR)
-    if (!items.length) return
+    const originalItems = Array.from(track.querySelectorAll(KPIS_ITEM_SELECTOR))
+    if (!originalItems.length) return
 
-    const images = Array.from(items, (item) => item.querySelector(KPI_IMAGE_SELECTOR))
+    const originalCount = originalItems.length
+
+    for (let copy = 1; copy < KPI_LOOP_COPIES; copy += 1) {
+        originalItems.forEach((item) => {
+            track.appendChild(item.cloneNode(true))
+        })
+    }
+
+    const items = Array.from(track.querySelectorAll(KPIS_ITEM_SELECTOR))
+    const images = items.map((item) => item.querySelector(KPI_IMAGE_SELECTOR))
 
     gsap.set(track, {
         perspective: 900,
@@ -58,7 +68,7 @@ export function initKpisDragAnimation(scope = document) {
         willChange: 'transform'
     })
 
-    const yawSetters = Array.from(items, (item) =>
+    const yawSetters = items.map((item) =>
         gsap.quickTo(item, 'rotationY', {
             duration: 0.22,
             ease: 'power2.out'
@@ -75,9 +85,20 @@ export function initKpisDragAnimation(scope = document) {
     )
 
     let progress = 0
-    let minProgress = 0
-    let maxProgress = 1
+    let loopSpan = originalCount / (items.length + 1)
+    let loopStart = loopSpan
+    let loopEnd = loopSpan * 2
     let throwTween = null
+    let dragStartProgress = 0
+    let dragStartX = 0
+    let lastDragX = 0
+    let lastDragTime = 0
+    let dragVelocityPxPerMs = 0
+
+    const getItemCenterX = (item) => {
+        const rect = item.getBoundingClientRect()
+        return rect.left + rect.width / 2
+    }
 
     const getProgressPerPixel = () => {
         const dragDistance = Math.max(
@@ -92,55 +113,52 @@ export function initKpisDragAnimation(scope = document) {
         gsap.set(items, { xPercent })
     }
 
-    const computeProgressBounds = () => {
-        const firstItem = items[0]
-        const lastItem = items[items.length - 1]
-        if (!firstItem || !lastItem) {
-            minProgress = 0
-            maxProgress = 1
-            return
-        }
+    const measureLoop = () => {
+        setTrackPositionByProgress(0)
+        const firstCenterAtStart = getItemCenterX(items[0])
+        const cloneCenterAtStart = getItemCenterX(items[originalCount])
 
+        setTrackPositionByProgress(1)
+        const firstCenterAtEnd = getItemCenterX(items[0])
+
+        const fullTravel = firstCenterAtEnd - firstCenterAtStart
+        const oneSetTravel = cloneCenterAtStart - firstCenterAtStart
+
+        loopSpan =
+            Math.abs(fullTravel) < 0.001
+                ? originalCount / (items.length + 1)
+                : Math.abs(oneSetTravel / fullTravel)
+
+        // Keep the playhead inside the middle copy so there is always
+        // a previous set on the left and a next set on the right.
+        loopStart = loopSpan
+        loopEnd = loopSpan * 2
+    }
+
+    const getCenteredProgressForItem = (item) => {
         const viewportCenterX = window.innerWidth / 2
-        const previousProgress = progress
+        setTrackPositionByProgress(0)
+        const centerAtStart = getItemCenterX(item)
+        setTrackPositionByProgress(1)
+        const centerAtEnd = getItemCenterX(item)
+        const travel = centerAtEnd - centerAtStart
+        if (Math.abs(travel) < 0.001) return loopStart
+        return (viewportCenterX - centerAtStart) / travel
+    }
 
-        const getItemCenterAtProgress = (sampleProgress, item) => {
-            setTrackPositionByProgress(sampleProgress)
-            const rect = item.getBoundingClientRect()
-            return rect.left + rect.width / 2
+    const normalizeProgress = (syncDragStart = false) => {
+        let shift = 0
+        while (progress >= loopEnd) {
+            progress -= loopSpan
+            shift -= 1
         }
-
-        const firstAtStart = getItemCenterAtProgress(0, firstItem)
-        const firstAtEnd = getItemCenterAtProgress(1, firstItem)
-        const lastAtStart = getItemCenterAtProgress(0, lastItem)
-        const lastAtEnd = getItemCenterAtProgress(1, lastItem)
-
-        const solveProgressForCenter = (startCenter, endCenter) => {
-            const delta = endCenter - startCenter
-            if (Math.abs(delta) < 0.0001) return 0
-            return (viewportCenterX - startCenter) / delta
+        while (progress < loopStart) {
+            progress += loopSpan
+            shift += 1
         }
-
-        const firstCenteredProgress = solveProgressForCenter(firstAtStart, firstAtEnd)
-        const lastCenteredProgress = solveProgressForCenter(lastAtStart, lastAtEnd)
-
-        minProgress = gsap.utils.clamp(
-            0,
-            1,
-            Math.min(firstCenteredProgress, lastCenteredProgress)
-        )
-        maxProgress = gsap.utils.clamp(
-            0,
-            1,
-            Math.max(firstCenteredProgress, lastCenteredProgress)
-        )
-
-        if (maxProgress - minProgress < 0.001) {
-            minProgress = 0
-            maxProgress = 1
+        if (syncDragStart && shift !== 0) {
+            dragStartProgress += shift * loopSpan
         }
-
-        progress = gsap.utils.clamp(minProgress, maxProgress, previousProgress)
     }
 
     const applyProgress = () => {
@@ -152,8 +170,7 @@ export function initKpisDragAnimation(scope = document) {
         setTrackPositionByProgress(progress)
 
         items.forEach((item, index) => {
-            const rect = item.getBoundingClientRect()
-            const itemCenterX = rect.left + rect.width / 2
+            const itemCenterX = getItemCenterX(item)
             const normalizedOffset = (itemCenterX - viewportCenterX) / maxDistance
             const clampedOffset = gsap.utils.clamp(-1, 1, normalizedOffset)
             const centeredFactor = 1 - Math.abs(clampedOffset)
@@ -170,11 +187,6 @@ export function initKpisDragAnimation(scope = document) {
         })
     }
 
-    let dragStartProgress = 0
-    let dragStartX = 0
-    let lastDragX = 0
-    let lastDragTime = 0
-    let dragVelocityPxPerMs = 0
     const proxy = document.createElement('div')
 
     Draggable.create(proxy, {
@@ -182,6 +194,7 @@ export function initKpisDragAnimation(scope = document) {
         trigger: wrap,
         onPress() {
             throwTween?.kill()
+            normalizeProgress()
             dragStartProgress = progress
             dragStartX = this.x
             lastDragX = this.x
@@ -192,16 +205,17 @@ export function initKpisDragAnimation(scope = document) {
         onRelease() {
             gsap.set(wrap, { cursor: 'grab' })
 
-            const projectedProgress = gsap.utils.clamp(
-                minProgress,
-                maxProgress,
+            const projectedProgress =
                 progress -
                 dragVelocityPxPerMs *
                 KPI_INERTIA_LOOKAHEAD_MS *
                 getProgressPerPixel()
-            )
             const delta = Math.abs(projectedProgress - progress)
-            if (delta < 0.0015) return
+            if (delta < 0.0015) {
+                normalizeProgress()
+                applyProgress()
+                return
+            }
 
             const duration = gsap.utils.clamp(
                 KPI_INERTIA_MIN_DURATION,
@@ -217,6 +231,13 @@ export function initKpisDragAnimation(scope = document) {
                     ease: 'power3.out',
                     onUpdate: function onUpdate() {
                         progress = this.targets()[0].value
+                        normalizeProgress()
+                        // Keep tween value in sync after seamless loop shifts
+                        this.targets()[0].value = progress
+                        applyProgress()
+                    },
+                    onComplete: () => {
+                        normalizeProgress()
                         applyProgress()
                     }
                 }
@@ -231,23 +252,26 @@ export function initKpisDragAnimation(scope = document) {
             lastDragTime = now
             const dragDeltaFromPress = this.x - dragStartX
 
-            progress = gsap.utils.clamp(
-                minProgress,
-                maxProgress,
+            progress =
                 dragStartProgress - dragDeltaFromPress * getProgressPerPixel()
-            )
+            normalizeProgress(true)
             applyProgress()
         }
     })
 
     const handleResize = () => {
-        computeProgressBounds()
+        const previousProgress = progress
+        measureLoop()
+        progress = previousProgress
+        normalizeProgress()
         applyProgress()
     }
     window.addEventListener('resize', handleResize)
 
-    computeProgressBounds()
-    progress = minProgress
+    measureLoop()
+    // Center the first slide (middle-copy clone) on load
+    progress = getCenteredProgressForItem(items[originalCount])
+    normalizeProgress()
     applyProgress()
     requestAnimationFrame(applyProgress)
 
