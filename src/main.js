@@ -50,12 +50,12 @@ function initLenis() {
     return lenis
 }
 
-function refreshScrollSystem({ refreshTriggers = true } = {}) {
+function refreshScrollSystem() {
     if (!lenis) return
 
     // Force an immediate measure even with autoResize (debounced).
     lenis.resize()
-    if (refreshTriggers) ScrollTrigger.refresh()
+    ScrollTrigger.refresh()
 }
 
 function flushPendingResizeRefresh() {
