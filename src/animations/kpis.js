@@ -1,5 +1,6 @@
 import gsap from 'gsap/dist/gsap'
 import ScrollTrigger from 'gsap/dist/ScrollTrigger'
+import { initKpisDragAnimation } from './kpis-drag'
 
 const KPIS_WRAP_SELECTOR = '.kpis_wrap'
 const KPIS_TRACK_SELECTOR = '.kpis_cl'
@@ -14,11 +15,16 @@ const KPI_CENTER_DEADZONE = 0
 const KPI_IMAGE_PARALLAX_MAX_PERCENT = 10
 const KPI_VIEWPORT_DISTANCE_MULTIPLIER = 1.7
 
-let kpisAnimationInitialized = false
+/** @typedef {'scroll' | 'drag'} KpisMode */
+
+/** Switch here: `'scroll'` or `'drag'` */
+export const KPIS_MODE = /** @type {KpisMode} */ ('drag')
+
+let kpisScrollAnimationInitialized = false
 gsap.registerPlugin(ScrollTrigger)
 
-export function initKpisAnimation(scope = document) {
-    if (kpisAnimationInitialized) return
+function initKpisScrollAnimation(scope = document) {
+    if (kpisScrollAnimationInitialized) return
 
     const wrap = scope.querySelector(KPIS_WRAP_SELECTOR)
     if (!wrap) return
@@ -146,5 +152,18 @@ export function initKpisAnimation(scope = document) {
     updateItemYawByViewportPosition(0)
     requestAnimationFrame(() => updateItemYawByViewportPosition(0))
 
-    kpisAnimationInitialized = true
+    kpisScrollAnimationInitialized = true
+}
+
+/**
+ * @param {ParentNode} [scope]
+ * @param {KpisMode} [mode]
+ */
+export function initKpisAnimation(scope = document, mode = KPIS_MODE) {
+    if (mode === 'drag') {
+        initKpisDragAnimation(scope)
+        return
+    }
+
+    initKpisScrollAnimation(scope)
 }
