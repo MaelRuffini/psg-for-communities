@@ -37,7 +37,7 @@ function initLenis() {
 
     lenis = new Lenis({
         autoRaf: true,
-        autoResize: false
+        autoResize: true
     })
 
     lenis.on('scroll', () => {
@@ -50,17 +50,27 @@ function initLenis() {
     return lenis
 }
 
-function refreshScrollSystem() {
+function refreshScrollSystem({ refreshTriggers = true } = {}) {
     if (!lenis) return
 
+    // Force an immediate measure even with autoResize (debounced).
     lenis.resize()
-    ScrollTrigger.refresh()
+    if (refreshTriggers) ScrollTrigger.refresh()
 }
 
 function flushPendingResizeRefresh() {
     if (!pendingResizeRefresh) return
 
     pendingResizeRefresh = false
+    refreshScrollSystem()
+}
+
+function queueScrollSystemRefresh() {
+    if (isUserScrolling) {
+        pendingResizeRefresh = true
+        return
+    }
+
     refreshScrollSystem()
 }
 
@@ -93,12 +103,14 @@ function bindLenisResize(instance) {
             heightDelta > 0 &&
             heightDelta <= MOBILE_VIEWPORT_UI_DELTA_MAX
 
-        if (!isLikelyMobileBrowserUiResize) {
-            if (isUserScrolling) {
-                pendingResizeRefresh = true
-            } else {
-                refreshScrollSystem()
-            }
+        // Address bar / toolbars change innerHeight. Always keep Lenis
+        // limit in sync; defer ScrollTrigger refresh until scroll ends so
+        // chrome show/hide does not constantly rebuild scrub positions.
+        if (isLikelyMobileBrowserUiResize) {
+            instance.resize()
+            if (isUserScrolling) pendingResizeRefresh = true
+        } else {
+            queueScrollSystemRefresh()
         }
 
         previousWidth = width
@@ -110,11 +122,7 @@ function bindLenisResize(instance) {
         frame = requestAnimationFrame(handleResize)
     })
     window.addEventListener('content:resized', () => {
-        if (isUserScrolling) {
-            pendingResizeRefresh = true
-        } else {
-            refreshScrollSystem()
-        }
+        queueScrollSystemRefresh()
     })
     window.addEventListener('touchstart', markScrolling, { passive: true })
     window.addEventListener('touchmove', markScrolling, { passive: true })
