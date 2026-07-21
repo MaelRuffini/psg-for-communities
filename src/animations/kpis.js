@@ -1,5 +1,5 @@
 import gsap from 'gsap/dist/gsap'
-import Draggable from 'gsap/dist/Draggable'
+import ScrollTrigger from 'gsap/dist/ScrollTrigger'
 
 const KPIS_WRAP_SELECTOR = '.kpis_wrap'
 const KPIS_TRACK_SELECTOR = '.kpis_cl'
@@ -8,16 +8,14 @@ const KPI_IMAGE_SELECTOR = '.kpis_cl_image'
 const KPI_MAX_YAW_DEG = 18
 const KPI_MIN_SCALE = 0.76
 const KPI_MAX_SCALE = 1
-const KPI_CENTER_DEADZONE = 0.03
-const KPI_IMAGE_PARALLAX_MAX_PERCENT = 8
+const KPI_ENTRY_SCALE_MULTIPLIER_START = 0.9
+const KPI_ENTRY_SCALE_RAMP_END_PROGRESS = 0.4
+const KPI_CENTER_DEADZONE = 0
+const KPI_IMAGE_PARALLAX_MAX_PERCENT = 10
 const KPI_VIEWPORT_DISTANCE_MULTIPLIER = 1.7
-const KPI_PROGRESS_DRAG_DISTANCE_FACTOR = 1.6
-const KPI_INERTIA_LOOKAHEAD_MS = 380
-const KPI_INERTIA_MIN_DURATION = 0.45
-const KPI_INERTIA_MAX_DURATION = 1.1
 
 let kpisAnimationInitialized = false
-gsap.registerPlugin(Draggable)
+gsap.registerPlugin(ScrollTrigger)
 
 export function initKpisAnimation(scope = document) {
     if (kpisAnimationInitialized) return
@@ -30,17 +28,12 @@ export function initKpisAnimation(scope = document) {
 
     const items = track.querySelectorAll(KPIS_ITEM_SELECTOR)
     if (!items.length) return
-
     const images = Array.from(items, (item) => item.querySelector(KPI_IMAGE_SELECTOR))
 
     gsap.set(track, {
+        yPercent: 0,
         perspective: 900,
         transformStyle: 'preserve-3d'
-    })
-
-    gsap.set(wrap, {
-        cursor: 'grab',
-        touchAction: 'pan-y'
     })
 
     gsap.set(items, {
@@ -51,7 +44,6 @@ export function initKpisAnimation(scope = document) {
         force3D: true,
         willChange: 'transform'
     })
-
     gsap.set(images.filter(Boolean), {
         xPercent: 0,
         force3D: true,
@@ -60,96 +52,36 @@ export function initKpisAnimation(scope = document) {
 
     const yawSetters = Array.from(items, (item) =>
         gsap.quickTo(item, 'rotationY', {
-            duration: 0.22,
+            duration: 0.28,
             ease: 'power2.out'
         })
     )
-
     const imageParallaxSetters = images.map((image) =>
         image
             ? gsap.quickTo(image, 'xPercent', {
-                duration: 0.2,
+                duration: 0.22,
                 ease: 'power2.out'
             })
             : null
     )
 
-    let progress = 0
-    let minProgress = 0
-    let maxProgress = 1
-    let throwTween = null
-
-    const getProgressPerPixel = () => {
-        const dragDistance = Math.max(
-            wrap.clientWidth * KPI_PROGRESS_DRAG_DISTANCE_FACTOR,
-            1
-        )
-        return 1 / dragDistance
-    }
-
-    const setTrackPositionByProgress = (value) => {
-        const xPercent = gsap.utils.interpolate(100, -100 * items.length, value)
-        gsap.set(items, { xPercent })
-    }
-
-    const computeProgressBounds = () => {
-        const firstItem = items[0]
-        const lastItem = items[items.length - 1]
-        if (!firstItem || !lastItem) {
-            minProgress = 0
-            maxProgress = 1
-            return
-        }
-
-        const viewportCenterX = window.innerWidth / 2
-        const previousProgress = progress
-
-        const getItemCenterAtProgress = (sampleProgress, item) => {
-            setTrackPositionByProgress(sampleProgress)
-            const rect = item.getBoundingClientRect()
-            return rect.left + rect.width / 2
-        }
-
-        const firstAtStart = getItemCenterAtProgress(0, firstItem)
-        const firstAtEnd = getItemCenterAtProgress(1, firstItem)
-        const lastAtStart = getItemCenterAtProgress(0, lastItem)
-        const lastAtEnd = getItemCenterAtProgress(1, lastItem)
-
-        const solveProgressForCenter = (startCenter, endCenter) => {
-            const delta = endCenter - startCenter
-            if (Math.abs(delta) < 0.0001) return 0
-            return (viewportCenterX - startCenter) / delta
-        }
-
-        const firstCenteredProgress = solveProgressForCenter(firstAtStart, firstAtEnd)
-        const lastCenteredProgress = solveProgressForCenter(lastAtStart, lastAtEnd)
-
-        minProgress = gsap.utils.clamp(
-            0,
-            1,
-            Math.min(firstCenteredProgress, lastCenteredProgress)
-        )
-        maxProgress = gsap.utils.clamp(
-            0,
-            1,
-            Math.max(firstCenteredProgress, lastCenteredProgress)
-        )
-
-        if (maxProgress - minProgress < 0.001) {
-            minProgress = 0
-            maxProgress = 1
-        }
-
-        progress = gsap.utils.clamp(minProgress, maxProgress, previousProgress)
-    }
-
-    const applyProgress = () => {
+    const updateItemYawByViewportPosition = (progress = 1) => {
         const viewportCenterX = window.innerWidth / 2
         const maxDistance = Math.max(
             viewportCenterX * KPI_VIEWPORT_DISTANCE_MULTIPLIER,
             1
         )
-        setTrackPositionByProgress(progress)
+        const clampedProgress = gsap.utils.clamp(0, 1, progress)
+        const entryRampProgress = gsap.utils.clamp(
+            0,
+            1,
+            clampedProgress / KPI_ENTRY_SCALE_RAMP_END_PROGRESS
+        )
+        const entryScaleMultiplier = gsap.utils.interpolate(
+            KPI_ENTRY_SCALE_MULTIPLIER_START,
+            1,
+            entryRampProgress
+        )
 
         items.forEach((item, index) => {
             const rect = item.getBoundingClientRect()
@@ -157,11 +89,11 @@ export function initKpisAnimation(scope = document) {
             const normalizedOffset = (itemCenterX - viewportCenterX) / maxDistance
             const clampedOffset = gsap.utils.clamp(-1, 1, normalizedOffset)
             const centeredFactor = 1 - Math.abs(clampedOffset)
+            const sideScale = KPI_MIN_SCALE * entryScaleMultiplier
             const isCentered = Math.abs(clampedOffset) <= KPI_CENTER_DEADZONE
             const targetScale = isCentered
                 ? 1
-                : gsap.utils.interpolate(KPI_MIN_SCALE, KPI_MAX_SCALE, centeredFactor)
-
+                : gsap.utils.interpolate(sideScale, KPI_MAX_SCALE, centeredFactor)
             yawSetters[index](clampedOffset * KPI_MAX_YAW_DEG)
             gsap.set(item, { scale: targetScale })
             imageParallaxSetters[index]?.(
@@ -170,86 +102,49 @@ export function initKpisAnimation(scope = document) {
         })
     }
 
-    let dragStartProgress = 0
-    let dragStartX = 0
-    let lastDragX = 0
-    let lastDragTime = 0
-    let dragVelocityPxPerMs = 0
-    const proxy = document.createElement('div')
-
-    Draggable.create(proxy, {
-        type: 'x',
-        trigger: wrap,
-        onPress() {
-            throwTween?.kill()
-            dragStartProgress = progress
-            dragStartX = this.x
-            lastDragX = this.x
-            lastDragTime = performance.now()
-            dragVelocityPxPerMs = 0
-            gsap.set(wrap, { cursor: 'grabbing' })
+    gsap.fromTo(
+        track,
+        {
+            yPercent: 0
         },
-        onRelease() {
-            gsap.set(wrap, { cursor: 'grab' })
-
-            const projectedProgress = gsap.utils.clamp(
-                minProgress,
-                maxProgress,
-                progress -
-                dragVelocityPxPerMs *
-                KPI_INERTIA_LOOKAHEAD_MS *
-                getProgressPerPixel()
-            )
-            const delta = Math.abs(projectedProgress - progress)
-            if (delta < 0.0015) return
-
-            const duration = gsap.utils.clamp(
-                KPI_INERTIA_MIN_DURATION,
-                KPI_INERTIA_MAX_DURATION,
-                delta * 2.8
-            )
-
-            throwTween = gsap.to(
-                { value: progress },
-                {
-                    value: projectedProgress,
-                    duration,
-                    ease: 'power3.out',
-                    onUpdate: function onUpdate() {
-                        progress = this.targets()[0].value
-                        applyProgress()
-                    }
-                }
-            )
-        },
-        onDrag() {
-            const now = performance.now()
-            const deltaX = this.x - lastDragX
-            const deltaTime = Math.max(now - lastDragTime, 1)
-            dragVelocityPxPerMs = deltaX / deltaTime
-            lastDragX = this.x
-            lastDragTime = now
-            const dragDeltaFromPress = this.x - dragStartX
-
-            progress = gsap.utils.clamp(
-                minProgress,
-                maxProgress,
-                dragStartProgress - dragDeltaFromPress * getProgressPerPixel()
-            )
-            applyProgress()
+        {
+            yPercent: 70,
+            ease: 'none',
+            scrollTrigger: {
+                trigger: wrap,
+                start: 'bottom bottom',
+                end: 'bottom top',
+                scrub: true,
+                invalidateOnRefresh: true
+            }
         }
-    })
+    )
 
-    const handleResize = () => {
-        computeProgressBounds()
-        applyProgress()
-    }
-    window.addEventListener('resize', handleResize)
+    gsap.fromTo(
+        items,
+        {
+            xPercent: 100
+        },
+        {
+            xPercent: () => -100 * items.length,
+            ease: 'none',
+            scrollTrigger: {
+                trigger: wrap,
+                start: 'top bottom',
+                end: 'bottom top',
+                scrub: true,
+                invalidateOnRefresh: true,
+                onEnter: (self) => updateItemYawByViewportPosition(self.progress),
+                onEnterBack: (self) =>
+                    updateItemYawByViewportPosition(self.progress),
+                onUpdate: (self) => updateItemYawByViewportPosition(self.progress),
+                onRefresh: (self) => updateItemYawByViewportPosition(self.progress)
+            }
+        }
+    )
 
-    computeProgressBounds()
-    progress = minProgress
-    applyProgress()
-    requestAnimationFrame(applyProgress)
+    updateItemYawByViewportPosition(0)
+    requestAnimationFrame(() => updateItemYawByViewportPosition(0))
 
     kpisAnimationInitialized = true
 }
