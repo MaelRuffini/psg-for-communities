@@ -10,6 +10,7 @@ import { initNumbersAnimation } from './animations/numbers'
 import { initPanelAnimation } from './animations/panel'
 import { initImagesAnimation } from './animations/images'
 import { initVisualItemsAnimation } from './animations/visual-items'
+import { initTitleAnimation } from './animations/title'
 import { initVSlider } from './animations/vslider'
 import { initKpisAnimation } from './animations/kpis'
 
@@ -232,6 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initFooterAnimation()
     initNumbersAnimation()
     initVisualItemsAnimation()
+    initTitleAnimation()
     initVSlider()
     initKpisAnimation()
 })
