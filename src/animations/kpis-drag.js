@@ -18,6 +18,10 @@ const KPI_INERTIA_MAX_DURATION = 0.28
 const KPI_SNAP_MIN_DURATION = 0.35
 const KPI_SNAP_MAX_DURATION = 0.55
 const KPI_LOOP_COPIES = 3
+const KPIS_SLIDER_WRAP_SELECTOR = '.kpis_cl_wrap'
+const KPI_PAGINATION_CLASS = 'kpis_pagination'
+const KPI_PAGINATION_DOT_CLASS = 'kpis_pagination_dot'
+const KPI_PAGINATION_ACTIVE_CLASS = 'is--active'
 
 let kpisDragAnimationInitialized = false
 gsap.registerPlugin(Draggable)
@@ -44,6 +48,34 @@ export function initKpisDragAnimation(scope = document) {
 
     const items = Array.from(track.querySelectorAll(KPIS_ITEM_SELECTOR))
     const images = items.map((item) => item.querySelector(KPI_IMAGE_SELECTOR))
+
+    const pagination = document.createElement('div')
+    pagination.className = KPI_PAGINATION_CLASS
+
+    const dots = Array.from({ length: originalCount }, (_, index) => {
+        const dot = document.createElement('div')
+        dot.className = KPI_PAGINATION_DOT_CLASS
+        dot.setAttribute('role', 'button')
+        dot.setAttribute('aria-label', `Go to slide ${index + 1}`)
+        dot.tabIndex = 0
+        pagination.appendChild(dot)
+        return dot
+    })
+
+    const sliderWrap = wrap.querySelector(KPIS_SLIDER_WRAP_SELECTOR) || track
+    sliderWrap.insertAdjacentElement('afterend', pagination)
+
+    let activeDotIndex = -1
+
+    const updatePagination = (activeIndex) => {
+        if (activeIndex === activeDotIndex) return
+        activeDotIndex = activeIndex
+        dots.forEach((dot, index) => {
+            const isActive = index === activeIndex
+            dot.classList.toggle(KPI_PAGINATION_ACTIVE_CLASS, isActive)
+            dot.setAttribute('aria-current', isActive ? 'true' : 'false')
+        })
+    }
 
     gsap.set(track, {
         perspective: 900,
@@ -208,6 +240,48 @@ export function initKpisDragAnimation(scope = document) {
         return bestTarget
     }
 
+    const getProgressForIndex = (targetIndex) => {
+        if (Math.abs(fullTravelPx) < 0.001) return progress
+
+        const viewportCenterX = window.innerWidth / 2
+        let closestOffset = 0
+        let closestDist = Infinity
+
+        items.forEach((item, index) => {
+            if (index % originalCount !== targetIndex) return
+            const offset = getItemCenterX(item) - viewportCenterX
+            const dist = Math.abs(offset)
+            if (dist < closestDist) {
+                closestDist = dist
+                closestOffset = offset
+            }
+        })
+
+        if (!Number.isFinite(closestDist) || closestDist === Infinity) {
+            return progress
+        }
+
+        const rawTarget = progress - closestOffset / fullTravelPx
+        const wrappedTarget = wrapToLoop(rawTarget)
+        const candidates = [
+            wrappedTarget,
+            wrappedTarget - loopSpan,
+            wrappedTarget + loopSpan
+        ]
+
+        let bestTarget = wrappedTarget
+        let bestDist = Math.abs(wrappedTarget - progress)
+        candidates.forEach((candidate) => {
+            const dist = Math.abs(candidate - progress)
+            if (dist < bestDist) {
+                bestDist = dist
+                bestTarget = candidate
+            }
+        })
+
+        return bestTarget
+    }
+
     const animateProgressTo = (target, duration, ease, onComplete) => {
         throwTween?.kill()
         const delta = Math.abs(target - progress)
@@ -256,6 +330,41 @@ export function initKpisDragAnimation(scope = document) {
         animateProgressTo(snapTarget, duration, 'power3.out')
     }
 
+    const goToIndex = (targetIndex) => {
+        if (targetIndex === activeDotIndex) return
+
+        throwTween?.kill()
+        normalizeProgress()
+
+        const target = getProgressForIndex(targetIndex)
+        const delta = Math.abs(target - progress)
+        if (delta < 0.0008) {
+            normalizeProgress()
+            applyProgress()
+            return
+        }
+
+        const duration = gsap.utils.clamp(
+            KPI_SNAP_MIN_DURATION,
+            KPI_SNAP_MAX_DURATION,
+            delta * 3.2
+        )
+        animateProgressTo(target, duration, 'power3.out')
+    }
+
+    dots.forEach((dot, index) => {
+        const activate = (event) => {
+            event.preventDefault()
+            goToIndex(index)
+        }
+
+        dot.addEventListener('click', activate)
+        dot.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return
+            activate(event)
+        })
+    })
+
     const applyProgress = () => {
         const viewportCenterX = window.innerWidth / 2
         const maxDistance = Math.max(
@@ -264,9 +373,19 @@ export function initKpisDragAnimation(scope = document) {
         )
         setTrackPositionByProgress(progress)
 
+        let closestIndex = 0
+        let closestDist = Infinity
+
         items.forEach((item, index) => {
             const itemCenterX = getItemCenterX(item)
-            const normalizedOffset = (itemCenterX - viewportCenterX) / maxDistance
+            const offsetPx = itemCenterX - viewportCenterX
+            const dist = Math.abs(offsetPx)
+            if (dist < closestDist) {
+                closestDist = dist
+                closestIndex = index
+            }
+
+            const normalizedOffset = offsetPx / maxDistance
             const clampedOffset = gsap.utils.clamp(-1, 1, normalizedOffset)
             const centeredFactor = 1 - Math.abs(clampedOffset)
             const isCentered = Math.abs(clampedOffset) <= KPI_CENTER_DEADZONE
@@ -280,6 +399,8 @@ export function initKpisDragAnimation(scope = document) {
                 -clampedOffset * KPI_IMAGE_PARALLAX_MAX_PERCENT
             )
         })
+
+        updatePagination(closestIndex % originalCount)
     }
 
     const proxy = document.createElement('div')

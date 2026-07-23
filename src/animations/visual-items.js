@@ -8,9 +8,9 @@ let visualItemsAnimationInitialized = false
 export function initVisualItemsAnimation(scope = document) {
     if (visualItemsAnimationInitialized) return
 
-    const trigger = scope.querySelector(VISUAL_WRAP_SELECTOR)
+    const wrap = scope.querySelector(VISUAL_WRAP_SELECTOR)
     const items = scope.querySelectorAll(VISUAL_ITEM_SELECTOR)
-    if (!trigger || !items.length) return
+    if (!wrap || !items.length) return
 
     gsap.from(items, {
         rotation: 0,
@@ -21,7 +21,7 @@ export function initVisualItemsAnimation(scope = document) {
         },
         ease: 'power2.out',
         scrollTrigger: {
-            trigger,
+            trigger: wrap,
             start: 'top 60%',
             once: true
         }
