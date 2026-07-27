@@ -13,6 +13,7 @@ import { initVisualItemsAnimation } from './animations/visual-items'
 import { initTitleAnimation } from './animations/title'
 import { initVSlider } from './animations/vslider'
 import { initKpisAnimation } from './animations/kpis'
+import { initLoaderAnimation } from './animations/loader'
 
 gsap.registerPlugin(ScrollTrigger, MorphSVGPlugin)
 
@@ -226,6 +227,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initViewportBreakpointReload()
     initLenis()
     initModalControls()
+    initLoaderAnimation()
     initPanelAnimation()
     initImagesAnimation()
     initHeroAnimations()
