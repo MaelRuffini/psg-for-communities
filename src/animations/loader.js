@@ -39,11 +39,16 @@ export function initLoaderAnimation(scope = document) {
             },
             '<'
         )
-        .from(
+        .fromTo(
             overlay,
             {
                 scale: 0,
                 opacity: 0,
+                duration: 1
+            },
+            {
+                scale: 1,
+                opacity: 1,
                 duration: 1
             },
             '<'
