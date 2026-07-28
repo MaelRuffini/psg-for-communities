@@ -12,6 +12,9 @@ const KPI_CENTER_DEADZONE = 0.03
 const KPI_IMAGE_PARALLAX_MAX_PERCENT = 8
 const KPI_VIEWPORT_DISTANCE_MULTIPLIER = 1.7
 const KPI_PROGRESS_DRAG_DISTANCE_FACTOR = 2.8
+const KPI_PROGRESS_DRAG_DISTANCE_FACTOR_MOBILE = 4.8
+const KPI_MOBILE_BREAKPOINT = 480
+const KPI_MOBILE_QUERY = `(max-width: ${KPI_MOBILE_BREAKPOINT - 1}px)`
 const KPI_INERTIA_LOOKAHEAD_MS = 160
 const KPI_INERTIA_MIN_DURATION = 0.12
 const KPI_INERTIA_MAX_DURATION = 0.28
@@ -136,10 +139,11 @@ export function initKpisDragAnimation(scope = document) {
     }
 
     const getProgressPerPixel = () => {
-        const dragDistance = Math.max(
-            wrap.clientWidth * KPI_PROGRESS_DRAG_DISTANCE_FACTOR,
-            1
-        )
+        const isMobile = window.matchMedia(KPI_MOBILE_QUERY).matches
+        const dragDistanceFactor = isMobile
+            ? KPI_PROGRESS_DRAG_DISTANCE_FACTOR_MOBILE
+            : KPI_PROGRESS_DRAG_DISTANCE_FACTOR
+        const dragDistance = Math.max(wrap.clientWidth * dragDistanceFactor, 1)
         return 1 / dragDistance
     }
 
