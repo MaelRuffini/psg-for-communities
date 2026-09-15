@@ -1,4 +1,5 @@
-import './styles/style.css'
+import plyrStyles from 'plyr/dist/plyr.css?inline'
+import appStyles from './styles/style.css?inline'
 import Lenis from 'lenis'
 import gsap from 'gsap/dist/gsap'
 import ScrollTrigger from 'gsap/dist/ScrollTrigger'
@@ -14,6 +15,19 @@ import { initTitleAnimation } from './animations/title'
 import { initVSlider } from './animations/vslider'
 import { initKpisAnimation } from './animations/kpis'
 import { initLoaderAnimation } from './animations/loader'
+import { initCursor } from './animations/cursor'
+import { initVideoModal } from './animations/video-modal'
+
+function injectStyles() {
+    if (document.querySelector('style[data-psg-js-styles]')) return
+
+    const style = document.createElement('style')
+    style.setAttribute('data-psg-js-styles', '')
+    style.textContent = `${plyrStyles}\n${appStyles}`
+    document.head.appendChild(style)
+}
+
+injectStyles()
 
 gsap.registerPlugin(ScrollTrigger, MorphSVGPlugin)
 
@@ -153,10 +167,10 @@ function initViewportBreakpointReload() {
 function initModalControls() {
     const modalButtons = document.querySelectorAll('.button_modal')
     const modal = document.querySelector('.modal_wrap')
-    const closeButtons = document.querySelectorAll('.modal_close_button')
-    const modalBackgrounds = document.querySelectorAll('.modal_background')
-
     if (!modalButtons.length || !modal) return
+
+    const closeButtons = modal.querySelectorAll('.modal_close_button')
+    const modalBackgrounds = modal.querySelectorAll('.modal_background')
     if (!closeButtons.length && !modalBackgrounds.length) return
 
     const FADE_DURATION_MS = 250
@@ -225,8 +239,11 @@ function initModalControls() {
 
 document.addEventListener('DOMContentLoaded', () => {
     initViewportBreakpointReload()
-    initLenis()
+    const scroll = initLenis()
     initModalControls()
+    console.log('[main] init cursor + video modal')
+    initCursor()
+    initVideoModal({ lenis: scroll })
     initLoaderAnimation()
     initPanelAnimation()
     initImagesAnimation()
